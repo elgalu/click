@@ -6,7 +6,7 @@ from itertools import repeat
 from functools import update_wrapper
 
 from .types import convert_type, IntRange, BOOL
-from .utils import make_str, make_default_short_help, echo, get_os_args
+from .utils import make_str, make_default_short_help, echo, get_os_args, is_running_jupyter
 from .exceptions import ClickException, UsageError, BadParameter, Abort, \
      MissingParameter
 from .termui import prompt, confirm
@@ -698,7 +698,10 @@ class BaseCommand(object):
         # Hook for the Bash completion.  This only activates if the Bash
         # completion is actually enabled, otherwise this is quite a fast
         # noop.
-        _bashcomplete(self, prog_name, complete_var)
+        if is_running_jupyter():
+          args = []
+        else:
+          _bashcomplete(self, prog_name, complete_var)
 
         try:
             try:
@@ -706,7 +709,8 @@ class BaseCommand(object):
                     rv = self.invoke(ctx)
                     if not standalone_mode:
                         return rv
-                    ctx.exit()
+                    if not is_running_jupyter():
+                        ctx.exit()
             except (EOFError, KeyboardInterrupt):
                 echo(file=sys.stderr)
                 raise Abort()
@@ -714,17 +718,20 @@ class BaseCommand(object):
                 if not standalone_mode:
                     raise
                 e.show()
-                sys.exit(e.exit_code)
+                if not is_running_jupyter():
+                    sys.exit(e.exit_code)
             except IOError as e:
                 if e.errno == errno.EPIPE:
-                    sys.exit(1)
+                    if not is_running_jupyter():
+                        sys.exit(1)
                 else:
                     raise
         except Abort:
             if not standalone_mode:
                 raise
             echo('Aborted!', file=sys.stderr)
-            sys.exit(1)
+            if not is_running_jupyter():
+                sys.exit(1)
 
     def __call__(self, *args, **kwargs):
         """Alias for :meth:`main`."""
@@ -819,7 +826,8 @@ class Command(BaseCommand):
         def show_help(ctx, param, value):
             if value and not ctx.resilient_parsing:
                 echo(ctx.get_help(), color=ctx.color)
-                ctx.exit()
+                if not is_running_jupyter():
+                    ctx.exit()
         return Option(help_options, is_flag=True,
                       is_eager=True, expose_value=False,
                       callback=show_help,
@@ -1027,7 +1035,8 @@ class MultiCommand(Command):
     def parse_args(self, ctx, args):
         if not args and self.no_args_is_help and not ctx.resilient_parsing:
             echo(ctx.get_help(), color=ctx.color)
-            ctx.exit()
+            if not is_running_jupyter():
+                ctx.exit()
 
         rest = Command.parse_args(self, ctx, args)
         if self.chain:
